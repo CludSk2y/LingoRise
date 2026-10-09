@@ -10,7 +10,7 @@
 - **Runtime:** Node.js
 - **Framework:** Express.js (REST API)
 - **Database:** PostgreSQL
-- **Database Driver / Query:** `pg` pool
+- **ORM:** Sequelize
 - **Authentication:** JSON Web Tokens (JWT) & Bcrypt.js
 - **Security & Utilities:** Cors, Dotenv
 
@@ -22,6 +22,83 @@
 
 ---
 
+## 🏗️ Database Design & Schema (Tables)
+
+Le projet contient 6 tables principales conçues pour assurer l'intégrité des données et des relations propres via Sequelize :
+
+### 1. Table `users` (Utilisateurs)
+| Colonne | Type | Contraintes / Règles |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary Key (Default UUIDv4) |
+| `name` | VARCHAR(100) | Required |
+| `email` | VARCHAR(255) | Required, Unique, Lowercase |
+| `password_hash` | VARCHAR(255) | Required (Hashed via bcrypt) |
+| `timezone` | VARCHAR(60) | Default: 'UTC' |
+
+### 2. Table `languages` (Langues suivies)
+| Colonne | Type | Contraintes / Règles |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary Key |
+| `user_id` | UUID | Foreign Key $\rightarrow$ `users.id` |
+| `name` | VARCHAR(80) | Required (e.g., French, Spanish) |
+| `code` | VARCHAR(10) | Nullable (e.g., fr, es) |
+| `current_level` | ENUM | 'A1', 'A2', 'B1', 'B2', 'C1', 'C2' |
+| `target_level` | ENUM | 'A1', 'A2', 'B1', 'B2', 'C1', 'C2' |
+| `status` | ENUM | 'active', 'paused', 'completed' |
+| `started_at` | DATEONLY | Date de début |
+
+### 3. Table `study_sessions` (Sessions d'étude)
+| Colonne | Type | Contraintes / Règles |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary Key |
+| `user_id` | UUID | Foreign Key $\rightarrow$ `users.id` |
+| `language_id` | UUID | Foreign Key $\rightarrow$ `languages.id` |
+| `activity_type` | ENUM | 'grammar', 'vocabulary', 'listening', 'speaking', 'reading', 'writing', 'other' |
+| `duration_minutes` | INTEGER | Obligatoire (> 0) |
+| `studied_at` | TIMESTAMP | Horodatage de la session |
+| `notes` | TEXT | Optionnel |
+
+### 4. Table `goals` (Objectifs d'apprentissage)
+| Colonne | Type | Contraintes / Règles |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary Key |
+| `user_id` | UUID | Foreign Key $\rightarrow$ `users.id` |
+| `language_id` | UUID | Nullable FK (Si NULL = objectif général pour toutes les langues) |
+| `period` | ENUM | 'daily', 'weekly' |
+| `target_minutes` | INTEGER | Obligatoire (> 0) |
+| `start_date` | DATEONLY | Date de début |
+| `end_date` | DATEONLY | Date de fin |
+
+### 5. Table `user_settings` (Paramètres utilisateur)
+| Colonne | Type | Contraintes / Règles |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary Key |
+| `user_id` | UUID | Foreign Key $\rightarrow$ `users.id` (Unique) |
+| `preferred_language` | VARCHAR(10) | Default: 'en' |
+| `theme` | ENUM | 'light', 'dark', 'system' |
+| `notifications_enabled` | BOOLEAN | Default: true |
+
+### 6. Table `daily_activity` (Cache des activités journalières - Optionnel)
+| Colonne | Type | Contraintes / Règles |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary Key |
+| `user_id` | UUID | Foreign Key $\rightarrow$ `users.id` |
+| `activity_date` | DATEONLY | Date locale |
+| `total_minutes` | INTEGER | Default: 0 |
+| `session_count` | INTEGER | Default: 0 |
+
+---
+
+## 🔌 API Endpoints Overview (`/api/v1`)
+
+- **Authentication (`/auth`):** Register, Login, Logout, GET `/me`, Password reset.
+- **Languages (`/languages`):** CRUD operations for user target languages.
+- **Study Sessions (`/sessions`):** Logging and filtering study practice sessions.
+- **Goals (`/goals`):** Managing learning targets and tracked progress.
+- **Dashboard & Analytics:** Summary overview, recent sessions, and growth metrics.
+
+---
+
 ## 📁 Full Project Structure
 
 ```text
@@ -29,27 +106,32 @@ lingorise/
 ├── backend/
 │   ├── src/
 │   │   ├── config/
-│   │   │   └── database.js          # PostgreSQL database connection pool
+│   │   │   └── database.js          # PostgreSQL database connection pool & Sequelize setup
 │   │   ├── controllers/
 │   │   │   ├── authController.js      # User registration and login logic
 │   │   │   ├── goalController.js      # Language learning goals & targets
 │   │   │   ├── languageController.js  # Target languages management
-│   │   │   ├── progressController.js  # Statistics and tracking logic
-│   │   │   ├── studySessionController.js # Study sessions and time tracking
-│   │   │   ├── userLanguageController.js # User-language mapping & levels
-│   │   │   └── vocabularyController.js   # Vocabulary cards and translation tracker
+│   │   │   ├── sessionController.js   # Study sessions and time tracking
+│   │   │   └── dashboardController.js # Analytics & summary data
 │   │   ├── middleware/
-│   │   │   └── authMiddleware.js      # JWT token verification middleware
+│   │   │   ├── authMiddleware.js      # JWT token verification middleware
+│   │   │   ├── errorHandler.js        # Centralized error handling
+│   │   │   └── validateRequest.js     # Input validation middleware
 │   │   ├── models/
-│   │   │   └── User.js                # Database schema / queries helpers
+│   │   │   ├── User.js                # User Sequelize model
+│   │   │   ├── Language.js            # Language Sequelize model
+│   │   │   ├── StudySession.js        # Study session Sequelize model
+│   │   │   ├── Goal.js                # Goal Sequelize model
+│   │   │   ├── UserSetting.js         # User settings Sequelize model
+│   │   │   └── index.js               # Model relationships & associations
 │   │   ├── routes/
 │   │   │   ├── authRoutes.js          # Authentication endpoints
 │   │   │   ├── goalRoutes.js          # Goals endpoints
 │   │   │   ├── languageRoutes.js      # Languages endpoints
-│   │   │   ├── progressRoutes.js      # Progress endpoints
-│   │   │   ├── studySessionRoutes.js  # Study sessions endpoints
-│   │   │   ├── userLanguageRoutes.js  # User languages endpoints
-│   │   │   └── vocabularyRoutes.js    # Vocabulary endpoints
+│   │   │   ├── sessionRoutes.js       # Study sessions endpoints
+│   │   │   └── dashboardRoutes.js     # Dashboard & Analytics endpoints
+│   │   ├── services/
+│   │   │   └── analyticsService.js    # Streaks, time calculation, and stats
 │   │   ├── app.js                     # Express app setup and middleware configuration
 │   │   └── server.js                  # Entry point to start the HTTP server
 │   ├── .env.example                   # Environment variables template
@@ -90,37 +172,14 @@ lingorise/
 ├── .gitignore                         # Git ignore rules for node_modules, env, etc.
 └── README.md                          # Project documentation
 
-⚙️ Getting Started & Installation
-Prerequisites
-Node.js (v18 or higher)
-
-PostgreSQL installed locally or hosted (e.g., Supabase, Neon, Render)
-
-1. Clone the Repository
-Bash
-git clone [https://github.com/CludSk2y/LingoRise.git](https://github.com/CludSk2y/LingoRise.git)
-cd LingoRise
-
-2. Backend Setup
-Bash
-cd backend
-npm install
-
-Start the backend development server:
-
-Bash
-npm run dev
 📌 Core Features
 Secure Authentication: JWT-based signup and signin with password hashing (bcryptjs).
 
-Language Tracking: Add and manage target languages you are currently studying.
+Language Tracking: Add and manage target languages you are currently studying with specific proficiency levels.
 
-Study Sessions: Log your daily practice time and keep track of consecutive daily streaks.
+Study Sessions: Log your daily practice time, activity types, and keep track of consecutive daily streaks.
 
 Vocabulary Bank: Store new words, translations, and review them using flashcard logic.
 
-Progress Insights: Analyze learning milestones and growth via dedicated statistics.
+Progress Insights: Analyze learning milestones, daily goals, and growth via dedicated statistics.
 
-📄 License
-This project is open-source and available under the MIT License.
-by kaoutar kham 
